@@ -17,21 +17,21 @@ class SegmentationDataset(Dataset):
     def __init__(
         self,
         root: str | Path,
-        split: str | None = None,
+        split: str = "all",
         transform: Callable | None = None,
         *,
         seed: int = 42,
         train_ratio: float = 0.7,
     ) -> None:
         self.root = Path(root)
-        self.split = split.lower() if split else None
+        self.split = split.lower()
         self.transform = transform
 
         if not self.root.is_dir():
             raise ValueError(f"Root path {self.root} is not a directory.")
 
-        if self.split and self.split not in ["train", "val"]:
-            raise ValueError(f"Split must be 'train' or 'val', got '{self.split}'.")
+        if self.split not in ["train", "val", "all"]:
+            raise ValueError(f"Split must be 'train', 'val', or 'all', got '{self.split}'.")
 
         rng = np.random.default_rng(seed=seed)
 
@@ -39,14 +39,13 @@ class SegmentationDataset(Dataset):
         patient_ids = sorted([p.name for p in self.root.iterdir() if p.is_dir()])
 
         # Patient-level splitting
-        if self.split:
-            rng.shuffle(patient_ids)
-            split_index = int(len(patient_ids) * train_ratio)
+        rng.shuffle(patient_ids)
+        split_index = int(len(patient_ids) * train_ratio)
 
-            if self.split == "train":
-                patient_ids = patient_ids[:split_index]
-            else:
-                patient_ids = patient_ids[split_index:]
+        if self.split == "train":
+            patient_ids = patient_ids[:split_index]
+        elif self.split == "val":
+            patient_ids = patient_ids[split_index:]
 
         self.samples = self._load_samples(patient_ids)
 

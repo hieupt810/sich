@@ -96,6 +96,21 @@ def extract_subject_id(path: Path, id_parts: int) -> str:
     return "_".join(parts[:id_parts])
 
 
+def load_nii(path: Path, dtype: np.dtype = np.float32) -> np.ndarray:
+    """Loads a NIfTI file and returns its data as a NumPy array."""
+    img = nib.load(str(path))
+    data = img.get_fdata(dtype=dtype)
+    return data
+
+
+def load_nrrd(path: Path, dtype: np.dtype = np.long, max_value: int = 6) -> np.ndarray:
+    """Loads a NRRD file and returns its data as a NumPy array."""
+    data, _ = nrrd.read(str(path))
+    if np.max(data) > max_value:
+        raise ValueError(f"Mask file '{path}' contains values greater than {max_value}.")
+    return data.astype(dtype)
+
+
 def find_mask_path(subject_id: str, msk_dirs: list[Path]) -> Path:
     """Finds the corresponding mask file for a given subject ID in the provided directories."""
     matches: list[Path] = []
@@ -108,26 +123,25 @@ def find_mask_path(subject_id: str, msk_dirs: list[Path]) -> Path:
             f"No mask file found for subject ID '{subject_id}' in provided directories."
         )
 
+    taken = None
     if len(matches) > 1:
-        LOGGER.warning(
-            "Multiple mask files found for subject ID '%s'. Using the first match: %s",
-            subject_id,
-            matches[0],
+        LOGGER.warning("Multiple mask files found for subject ID '%s'.", subject_id)
+        for match in matches:
+            try:
+                _ = load_nrrd(match)
+            except Exception as e:
+                LOGGER.warning(e)
+                continue
+
+            # If we reach here, the mask file is valid
+            taken = match
+            break
+
+    if taken is None:
+        raise FileNotFoundError(
+            f"No valid mask file found for subject ID '{subject_id}' in provided directories."
         )
-    return matches[0]
-
-
-def load_nii(path: Path, dtype: np.dtype = np.float32) -> np.ndarray:
-    """Loads a NIfTI file and returns its data as a NumPy array."""
-    img = nib.load(str(path))
-    data = img.get_fdata(dtype=dtype)
-    return data
-
-
-def load_nrrd(path: Path, dtype: np.dtype = np.long) -> np.ndarray:
-    """Loads a NRRD file and returns its data as a NumPy array."""
-    data, _ = nrrd.read(str(path))
-    return data.astype(dtype)
+    return taken
 
 
 def discover_volumes(directory: Path, id_parts: int) -> dict[str, Path]:
@@ -142,11 +156,11 @@ def discover_volumes(directory: Path, id_parts: int) -> dict[str, Path]:
                     "Duplicate subject ID '%s' found. Previous file: '%s', Current file: '%s'",
                     subject_id,
                     previous.stem,
-                    file,
+                    file.stem,
                 )
             volumes[subject_id] = file
         except ValueError as e:
-            LOGGER.warning("Skipping file %s: %s", file, e)
+            LOGGER.warning(e)
     return volumes
 
 
@@ -158,7 +172,7 @@ def build_pairs(nii_dir: Path, msk_dirs: list[Path], id_parts: int) -> list[Volu
             msk_path = find_mask_path(subject_id, msk_dirs)
             pairs.append(VolumePair(subject_id=subject_id, nii_path=nii_path, msk_path=msk_path))
         except FileNotFoundError as e:
-            LOGGER.warning("Skipping subject ID '%s': %s", subject_id, e)
+            LOGGER.warning(e)
     return pairs
 
 
