@@ -172,7 +172,7 @@ def apply_window(volume: np.ndarray, window_center: float, window_width: float) 
 
 
 def process_pair(pair: VolumePair, config: RuntimeConfig) -> bool:
-    subject_dir = config.out_dir / pair.subject_id
+    subject_dir = Path(config.out_dir) / pair.subject_id
     subject_dir.mkdir(parents=True, exist_ok=True)
 
     img = load_nii(pair.nii_path)
