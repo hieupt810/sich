@@ -1,6 +1,6 @@
 import argparse
 import logging
-from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -87,8 +87,8 @@ def get_runtime_config():
 
 def extract_subject_id(path: Path, id_parts: int) -> str:
     """Extracts the subject ID from the file path based on the specified number of parts."""
-    stem = path.stem.replace(".nii.gz", "").replace(".nii", "")
-    parts = stem.split("_")
+    filename = path.name.replace(".nii.gz", "").replace(".nii", "")
+    parts = filename.split("_")
     if len(parts) < id_parts:
         raise ValueError(
             f"File name {path.name} does not contain enough parts to extract subject ID."
@@ -103,7 +103,7 @@ def load_nii(path: Path, dtype: np.dtype = np.float32) -> np.ndarray:
     return data
 
 
-def load_nrrd(path: Path, dtype: np.dtype = np.long, max_value: int = 6) -> np.ndarray:
+def load_nrrd(path: Path, dtype: np.dtype = np.int64, max_value: int = 5) -> np.ndarray:
     """Loads a NRRD file and returns its data as a NumPy array."""
     data, _ = nrrd.read(str(path))
     if np.max(data) > max_value:
@@ -119,28 +119,19 @@ def find_mask_path(subject_id: str, msk_dirs: list[Path]) -> Path:
         matches.extend(msk_dir.glob(pattern))
 
     if not matches:
-        raise FileNotFoundError(
-            f"No mask file found for subject ID '{subject_id}' in provided directories."
-        )
+        raise FileNotFoundError(f"No mask file found for subject ID '{subject_id}'.")
 
-    taken = None
+    taken = matches[0]
     if len(matches) > 1:
         LOGGER.warning("Multiple mask files found for subject ID '%s'.", subject_id)
         for match in matches:
             try:
                 _ = load_nrrd(match)
+                taken = match
+                break
             except Exception as e:
                 LOGGER.warning(e)
                 continue
-
-            # If we reach here, the mask file is valid
-            taken = match
-            break
-
-    if taken is None:
-        raise FileNotFoundError(
-            f"No valid mask file found for subject ID '{subject_id}' in provided directories."
-        )
     return taken
 
 
@@ -228,6 +219,7 @@ def process_pair(pair: VolumePair, config: RuntimeConfig) -> bool:
         stem = f"{pair.subject_id}_{slice_index:03d}"
         np.save(subject_dir / f"{stem}_img.npy", img_slice)
         np.save(subject_dir / f"{stem}_msk.npy", msk_slice)
+    return True
 
 
 def main(config: RuntimeConfig) -> int:
@@ -255,7 +247,9 @@ def main(config: RuntimeConfig) -> int:
     success_count, failure_count = 0, 0
     with ProcessPoolExecutor(max_workers=config.workers) as executor:
         futures = {executor.submit(process_pair, pair, config): pair for pair in pairs}
-        for future in futures:
+
+        # Use as_completed to process them as soon as they finish
+        for future in as_completed(futures):
             pair = futures[future]
             try:
                 result = future.result()
