@@ -135,7 +135,7 @@ def main(config: DatasetRuntimeConfig | None = None) -> None:
     )
     LOGGER.info("Computing dataset statistics with config: %s", asdict(config))
     try:
-        dataset = SegmentationDataset()
+        dataset = SegmentationDataset(root=config.root)
         mean, std = compute_stats(dataset)
         LOGGER.info("Dataset mean: %.4f, std: %.4f", mean, std)
     except Exception as e:

@@ -195,8 +195,8 @@ def process_pair(pair: VolumePair, config: RuntimeConfig) -> bool:
         )
         return False
 
-    img_slices = [np.take(img, index=i, axis=config.axis) for i in range(img.shape[config.axis])]
-    msk_slices = [np.take(msk, index=i, axis=config.axis) for i in range(msk.shape[config.axis])]
+    img_slices = [np.take(img, indices=i, axis=config.axis) for i in range(img.shape[config.axis])]
+    msk_slices = [np.take(msk, indices=i, axis=config.axis) for i in range(msk.shape[config.axis])]
     if len(img_slices) != len(msk_slices):
         LOGGER.warning(
             "Slice count mismatch for subject ID '%s': NIfTI slices %d, Mask slices %d. Skipping.",
