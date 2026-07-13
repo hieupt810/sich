@@ -114,7 +114,7 @@ def load_nrrd(path: Path, dtype: np.dtype = np.long, max_value: int = 6) -> np.n
 def find_mask_path(subject_id: str, msk_dirs: list[Path]) -> Path:
     """Finds the corresponding mask file for a given subject ID in the provided directories."""
     matches: list[Path] = []
-    pattern = f"{subject_id}*.nrrd"
+    pattern = f"{subject_id}*.seg.nrrd"
     for msk_dir in msk_dirs:
         matches.extend(msk_dir.glob(pattern))
 

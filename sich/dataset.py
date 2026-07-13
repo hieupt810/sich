@@ -54,7 +54,7 @@ class SegmentationDataset(Dataset):
         for patient_id in patient_ids:
             patient_dir = self.root / patient_id
             for image_path in patient_dir.glob("*_img.npy"):
-                mask_path = image_path.with_name(image_path.name.replace("_img.npy", "_mask.npy"))
+                mask_path = image_path.with_name(image_path.name.replace("_img.npy", "_msk.npy"))
                 if mask_path.exists():
                     samples.append((image_path, mask_path))
                 else:
