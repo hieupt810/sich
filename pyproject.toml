@@ -1,0 +1,42 @@
+[project]
+name = "sich"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "torch==2.5.0",
+    "torchvision",
+    "torchaudio",
+    "nibabel",
+    "pynrrd",
+]
+
+[dependency-groups]
+dev = ["identify>=2.6.19", "pre-commit", "ruff"]
+
+[[tool.uv.index]]
+name = "pytorch-cu118"
+url = "https://download.pytorch.org/whl/cu118"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cu118" }
+torchvision = { index = "pytorch-cu118" }
+torchaudio = { index = "pytorch-cu118" }
+
+[tool.ruff]
+indent-width = 4
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
+fixable = ["ALL"]
+select = ["B", "E", "F", "I", "SIM", "UP"]
+
+[tool.ruff.format]
+line-ending = "lf"
+indent-style = "space"
+quote-style = "double"
+skip-magic-trailing-comma = false
