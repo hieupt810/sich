@@ -141,7 +141,7 @@ def discover_volumes(directory: Path, id_parts: int) -> dict[str, Path]:
                 LOGGER.warning(
                     "Duplicate subject ID '%s' found. Previous file: '%s', Current file: '%s'",
                     subject_id,
-                    previous,
+                    previous.stem,
                     file,
                 )
             volumes[subject_id] = file
