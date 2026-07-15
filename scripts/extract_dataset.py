@@ -1,5 +1,6 @@
 import argparse
 import logging
+import shutil
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
@@ -28,6 +29,7 @@ class RuntimeConfig:
     window_width: float
     workers: int
     axis: int
+    overwrite: bool
 
 
 def get_runtime_config() -> RuntimeConfig:
@@ -39,6 +41,7 @@ def get_runtime_config() -> RuntimeConfig:
     parser.add_argument("--window_width", type=float, default=400.0, help="Window width.")
     parser.add_argument("--workers", type=int, default=4, help="Number of parallel workers.")
     parser.add_argument("--axis", type=int, default=2, help="Axis to slice the volumes (0, 1, 2).")
+    parser.add_argument("--overwrite", action="store_true", help="Overwrite existing output.")
 
     args = parser.parse_args()
     return RuntimeConfig(
@@ -49,6 +52,7 @@ def get_runtime_config() -> RuntimeConfig:
         window_width=args.window_width,
         workers=args.workers,
         axis=args.axis,
+        overwrite=args.overwrite,
     )
 
 
@@ -146,6 +150,10 @@ def main(config: RuntimeConfig) -> int:
     if not nii_dir.is_dir():
         LOGGER.error("Missing NIfTI dir | Path: %s", nii_dir)
         return 1
+
+    if config.overwrite and Path(config.out_dir).exists():
+        LOGGER.warning("Overwriting existing output directory | Path: %s", config.out_dir)
+        shutil.rmtree(config.out_dir)
 
     LOGGER.info("Discovering and validating pairs...")
     pairs = build_pairs(nii_dir, msk_dir)
