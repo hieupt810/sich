@@ -1,13 +1,11 @@
 from __future__ import annotations
 
-import numpy as np
 import torch
-from torchvision.transforms.v2 import ColorJitter
-from torchvision.transforms.v2 import functional as F
+from torchvision import tv_tensors
+from torchvision.transforms import v2
 
 DEFAULT_IMAGE_SIZE = (256, 256)
-DEFAULT_IMAGE_INTERPOLATION = F.InterpolationMode.BILINEAR
-DEFAULT_MASK_INTERPOLATION = F.InterpolationMode.NEAREST
+DEFAULT_IMAGE_INTERPOLATION = v2.InterpolationMode.BILINEAR
 
 
 class TrainTransform:
@@ -17,41 +15,43 @@ class TrainTransform:
         std: tuple[float, ...],
         image_size: tuple[int, int] = DEFAULT_IMAGE_SIZE,
         *,
-        seed: int = 42,
-        image_interpolation: F.InterpolationMode = DEFAULT_IMAGE_INTERPOLATION,
-        mask_interpolation: F.InterpolationMode = DEFAULT_MASK_INTERPOLATION,
+        image_interpolation: v2.InterpolationMode = DEFAULT_IMAGE_INTERPOLATION,
     ) -> None:
-        self.image_size = image_size
-        self.mean = mean
-        self.std = std
-
-        self.rng = np.random.default_rng(seed=seed)
-        self.image_interpolation = image_interpolation
-        self.mask_interpolation = mask_interpolation
-        self.color_jitter = ColorJitter(brightness=0.2, contrast=0.2, saturation=0.1, hue=0.05)
+        self.transforms = v2.Compose(
+            [
+                # 1. Resize
+                v2.Resize(size=image_size, interpolation=image_interpolation, antialias=True),
+                # 2. Geometric Augmentations
+                v2.RandomVerticalFlip(p=0.5),
+                v2.RandomRotation(degrees=[-15, 15], interpolation=image_interpolation),
+                # 3. Photometric Augmentations
+                v2.RandomApply(
+                    [v2.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.1, hue=0.05)], p=0.5
+                ),
+                # 4. Type Conversions
+                v2.ToDtype(
+                    dtype={
+                        tv_tensors.Image: torch.float32,
+                        tv_tensors.Mask: torch.long,
+                        "others": None,
+                    },
+                    scale=True,
+                ),
+                # 5. Noise Augmentation
+                v2.RandomApply([v2.GaussianNoise(mean=0.0, sigma=0.05, clip=True)], p=0.5),
+                # 5. Normalization: Automatically applies to Image and skips the Mask.
+                v2.Normalize(mean=mean, std=std),
+            ]
+        )
 
     def __call__(
         self, image: torch.Tensor, mask: torch.Tensor
     ) -> tuple[torch.Tensor, torch.Tensor]:
-        image, mask = F.to_image(image), F.to_image(mask)
-        image, mask = F.to_dtype(image, dtype=torch.float32), F.to_dtype(mask, dtype=torch.long)
+        img_tv = tv_tensors.Image(image)
+        mask_tv = tv_tensors.Mask(mask)
 
-        image = F.resize(image, size=self.image_size, interpolation=self.image_interpolation)
-        mask = F.resize(mask, size=self.image_size, interpolation=self.mask_interpolation)
-
-        if self.rng.random() > 0.5:
-            image, mask = F.vflip(image), F.vflip(mask)
-
-        if self.rng.random() > 0.5:
-            angle = self.rng.integers(-15, 16)
-            image = F.rotate(image, angle=angle, interpolation=self.image_interpolation)
-            mask = F.rotate(mask, angle=angle, interpolation=self.mask_interpolation)
-
-        if self.rng.random() > 0.5:
-            image = self.color_jitter(image)
-
-        image = F.normalize(image, mean=self.mean, std=self.std)
-        return image, mask
+        # Apply the entire joint pipeline in one highly-optimized pass
+        return self.transforms(img_tv, mask_tv)
 
 
 class TestTransform:
@@ -61,24 +61,27 @@ class TestTransform:
         std: tuple[float, ...],
         image_size: tuple[int, int] = DEFAULT_IMAGE_SIZE,
         *,
-        image_interpolation: F.InterpolationMode = DEFAULT_IMAGE_INTERPOLATION,
-        mask_interpolation: F.InterpolationMode = DEFAULT_MASK_INTERPOLATION,
+        image_interpolation: v2.InterpolationMode = DEFAULT_IMAGE_INTERPOLATION,
     ) -> None:
-        self.image_size = image_size
-        self.mean = mean
-        self.std = std
-
-        self.image_interpolation = image_interpolation
-        self.mask_interpolation = mask_interpolation
+        self.transforms = v2.Compose(
+            [
+                v2.Resize(size=image_size, interpolation=image_interpolation, antialias=True),
+                v2.ToDtype(
+                    dtype={
+                        tv_tensors.Image: torch.float32,
+                        tv_tensors.Mask: torch.long,
+                        "others": None,
+                    },
+                    scale=True,
+                ),
+                v2.Normalize(mean=mean, std=std),
+            ]
+        )
 
     def __call__(
         self, image: torch.Tensor, mask: torch.Tensor
     ) -> tuple[torch.Tensor, torch.Tensor]:
-        image, mask = F.to_image(image), F.to_image(mask)
-        image, mask = F.to_dtype(image, dtype=torch.float32), F.to_dtype(mask, dtype=torch.long)
+        img_tv = tv_tensors.Image(image)
+        mask_tv = tv_tensors.Mask(mask)
 
-        image = F.resize(image, size=self.image_size, interpolation=self.image_interpolation)
-        mask = F.resize(mask, size=self.image_size, interpolation=self.mask_interpolation)
-
-        image = F.normalize(image, mean=self.mean, std=self.std)
-        return image, mask
+        return self.transforms(img_tv, mask_tv)
