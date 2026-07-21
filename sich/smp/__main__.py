@@ -145,6 +145,7 @@ class DeepLabV3Trainer:
             "args": vars(self.args),
         }
 
+        self.output_dir.mkdir(parents=True, exist_ok=True)
         ckpt_path = self.output_dir / "last_model.pth"
         torch.save(checkpoint, ckpt_path)
 
