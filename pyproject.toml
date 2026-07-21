@@ -10,6 +10,8 @@ dependencies = [
     "torchaudio",
     "nibabel",
     "pynrrd",
+    "segmentation-models-pytorch",
+    "tqdm",
 ]
 
 [dependency-groups]
