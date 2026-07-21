@@ -4,7 +4,6 @@ import os
 import random
 from pathlib import Path
 
-import numpy as np
 import segmentation_models_pytorch as smp
 import torch
 from torch.amp import GradScaler, autocast
@@ -59,10 +58,14 @@ class DeepLabV3Trainer:
     def _build_dataloaders(self) -> tuple[DataLoader, DataLoader]:
         """Builds training and validation DataLoaders."""
         train_dataset = SegmentationDataset(
-            root=self.args.train_data, split="train", transform=TrainTransform()
+            root=self.args.train_data,
+            split="train",
+            transform=TrainTransform(mean=self.args.mean, std=self.args.std),
         )
         val_dataset = SegmentationDataset(
-            root=self.args.val_data, split="val", transform=TestTransform()
+            root=self.args.val_data,
+            split="val",
+            transform=TestTransform(mean=self.args.mean, std=self.args.std),
         )
 
         train_loader = DataLoader(
@@ -155,8 +158,6 @@ class DeepLabV3Trainer:
         random.seed(self.args.seed)
         os.environ["PYTHONHASHSEED"] = str(self.args.seed)
 
-        np.random.seed(self.args.seed)
-
         torch.manual_seed(self.args.seed)
         torch.cuda.manual_seed_all(self.args.seed)
         torch.backends.cudnn.deterministic = True
@@ -198,6 +199,20 @@ def parse_arguments() -> argparse.Namespace:
     # Dataset args
     parser.add_argument("--train-data", type=str, required=True, help="Path to training dataset")
     parser.add_argument("--val-data", type=str, required=True, help="Path to validation dataset")
+    parser.add_argument(
+        "--mean",
+        type=float,
+        nargs="+",
+        default=[0.485, 0.456, 0.406],
+        help="Mean for normalization",
+    )
+    parser.add_argument(
+        "--std",
+        type=float,
+        nargs="+",
+        default=[0.229, 0.224, 0.225],
+        help="Standard deviation for normalization",
+    )
     parser.add_argument("--num-classes", type=int, default=6, help="Number of segmentation classes")
     parser.add_argument("--in-channels", type=int, default=1, help="Number of input channels")
 
