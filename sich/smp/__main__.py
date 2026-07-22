@@ -132,7 +132,7 @@ class DeepLabV3Trainer:
                 logits = self.model(images)
                 loss = self.criterion(logits, masks)
 
-            dice = calculate_dice(logits, masks, self.args.num_classes, ignore_bg=True)
+            dice = calculate_dice(logits, masks, self.args.num_classes, ignore_bg=False)
 
             running_loss += loss.item()
             running_dice += dice
