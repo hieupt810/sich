@@ -1,7 +1,5 @@
 import argparse
 import logging
-import os
-import random
 from pathlib import Path
 
 import segmentation_models_pytorch as smp
@@ -14,6 +12,7 @@ from tqdm import tqdm
 
 from sich.dataset import SegmentationDataset
 from sich.transform import TestTransform, TrainTransform
+from sich.utils import calculate_dice, seed_everything
 
 # Configure concise, structured logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)s | %(message)s")
@@ -45,8 +44,12 @@ class DeepLabV3Trainer:
         self.scheduler = CosineAnnealingLR(self.optimizer, T_max=args.epochs)
 
         # 4. Initialize Loss & AMP Scaler
-        self.criterion = smp.losses.DiceLoss(
-            mode="multiclass", classes=range(1, args.num_classes), from_logits=True
+        self.criterion = smp.losses.TverskyLoss(
+            mode="multiclass",
+            classes=range(1, args.num_classes),
+            from_logits=True,
+            alpha=0.3,
+            beta=0.7,
         )
         self.scaler = GradScaler(enabled=args.use_amp)
 
@@ -119,7 +122,7 @@ class DeepLabV3Trainer:
     def validate(self, epoch: int) -> float:
         """Evaluates the model on the validation set."""
         self.model.eval()
-        running_loss = 0.0
+        running_loss, running_dice = 0.0, 0.0
 
         pbar = tqdm(self.val_loader, desc=f"Validation {epoch}/{self.args.epochs}", unit="batch")
         for images, masks in pbar:
@@ -129,12 +132,20 @@ class DeepLabV3Trainer:
                 logits = self.model(images)
                 loss = self.criterion(logits, masks)
 
+            dice = calculate_dice(logits, masks, self.args.num_classes, ignore_bg=True)
+
             running_loss += loss.item()
-            pbar.set_postfix({"val_loss": running_loss / (pbar.n + 1)})
+            running_dice += dice
 
-        return running_loss / len(self.val_loader)
+            pbar.set_postfix(
+                {"val_loss": running_loss / (pbar.n + 1), "val_dice": running_dice / (pbar.n + 1)}
+            )
 
-    def save_checkpoint(self, epoch: int, val_loss: float, is_best: bool) -> None:
+        avg_loss = running_loss / len(self.val_loader)
+        avg_dice = running_dice / len(self.val_loader)
+        return avg_loss, avg_dice
+
+    def save_checkpoint(self, epoch: int, val_loss: float, val_dice: float, is_best: bool) -> None:
         """Saves model state, optimizer state, and scaler state."""
         checkpoint = {
             "epoch": epoch,
@@ -142,6 +153,7 @@ class DeepLabV3Trainer:
             "optimizer_state_dict": self.optimizer.state_dict(),
             "scaler_state_dict": self.scaler.state_dict(),
             "val_loss": val_loss,
+            "val_dice": val_dice,
             "args": vars(self.args),
         }
 
@@ -154,44 +166,36 @@ class DeepLabV3Trainer:
             torch.save(checkpoint, best_path)
             self.logger.info(f"Saved new best model to {best_path}")
 
-    def _seed_everything(self) -> None:
-        """Sets random seeds for reproducibility."""
-        random.seed(self.args.seed)
-        os.environ["PYTHONHASHSEED"] = str(self.args.seed)
-
-        torch.manual_seed(self.args.seed)
-        torch.cuda.manual_seed_all(self.args.seed)
-        torch.backends.cudnn.deterministic = True
-        torch.backends.cudnn.benchmark = False
-
     def fit(self) -> None:
-        self._seed_everything()
+        seed_everything(self.args.seed)
 
         self.logger.info("Starting training for %d epochs", self.args.epochs)
-        best_val_loss = float("inf")
+        best_val_dice = float("inf")
 
         for epoch in range(1, self.args.epochs + 1):
             train_loss = self.train_epoch(epoch)
-            val_loss = self.validate(epoch)
+            val_loss, val_dice = self.validate(epoch)
 
             self.scheduler.step()
 
-            is_best = val_loss < best_val_loss
+            is_best = val_dice < best_val_dice
             if is_best:
-                best_val_loss = val_loss
+                best_val_dice = val_dice
 
-            self.save_checkpoint(epoch, val_loss, is_best)
+            self.save_checkpoint(epoch, val_loss, val_dice, is_best)
 
             self.logger.info(
-                "Epoch [%d/%d]: Train Loss: %.4f | Val Loss: %.4f | Best Val Loss: %.4f",
+                "Epoch [%d/%d]: Train Loss: %.4f | Val Loss: %.4f | "
+                "Val Dice: %.4f | Best Dice: %.4f",
                 epoch,
                 self.args.epochs,
                 train_loss,
                 val_loss,
-                best_val_loss,
+                val_dice,
+                best_val_dice,
             )
 
-        self.logger.info("Training completed. Best validation loss: %.4f", best_val_loss)
+        self.logger.info("Training completed. Best validation dice: %.4f", best_val_dice)
 
 
 def parse_arguments() -> argparse.Namespace:
