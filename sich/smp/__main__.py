@@ -178,7 +178,7 @@ class DeepLabV3Trainer:
 
             self.scheduler.step()
 
-            is_best = val_dice < best_val_dice
+            is_best = val_dice > best_val_dice
             if is_best:
                 best_val_dice = val_dice
 
